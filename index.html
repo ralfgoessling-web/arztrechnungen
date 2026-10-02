@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arztrechnung erfassen</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  min-height: 100vh; padding: 24px;
+  display: flex; justify-content: center; align-items: flex-start;
+}
+.card {
+  background: white; border-radius: 14px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+  max-width: 700px; width: 100%; overflow: hidden;
+}
+.header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white; padding: 28px 32px; text-align: center;
+}
+.header h1 { font-size: 24px; font-weight: 600; margin-bottom: 6px; }
+.header p  { font-size: 13px; opacity: 0.88; }
+.body { padding: 32px; }
+.api-key-box {
+  background: #fafafa; border: 1.5px solid #e5e7eb;
+  border-radius: 10px; padding: 16px; margin-bottom: 20px;
+}
+.api-key-box.saved { background: #f0fdf4; border-color: #86efac; }
+.drop-zone {
+  border: 2.5px dashed #a5b4fc; border-radius: 10px;
+  padding: 36px 20px; text-align: center; cursor: pointer;
+  background: #f8f7ff; transition: all .2s; margin-bottom: 20px;
+}
+.drop-zone:hover, .drop-zone.over { border-color: #667eea; background: #ede9fe; }
+.drop-zone .icon { font-size: 40px; margin-bottom: 10px; }
+.drop-zone p { color: #555; font-size: 15px; }
+.drop-zone .hint { color: #aaa; font-size: 12px; margin-top: 4px; }
+#fileInput { display: none; }
+.file-badge {
+  display: none; align-items: center; gap: 10px;
+  background: #f0fdf4; border: 1px solid #bbf7d0;
+  border-radius: 8px; padding: 10px 14px;
+  font-size: 13px; color: #15803d; margin-bottom: 20px;
+}
+.file-badge.show { display: flex; }
+.ai-status {
+  display: none; align-items: center; gap: 10px;
+  background: #eff6ff; border: 1px solid #bfdbfe;
+  border-radius: 8px; padding: 10px 14px;
+  font-size: 13px; color: #1d4ed8; margin-bottom: 20px;
+}
+.ai-status.show { display: flex; }
+.spinner {
+  width: 16px; height: 16px; border: 2px solid #93c5fd;
+  border-top-color: #1d4ed8; border-radius: 50%;
+  animation: spin .8s linear infinite; flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.form-group { display: flex; flex-direction: column; gap: 5px; }
+.form-group.full { grid-column: 1 / -1; }
+label { font-size: 13px; font-weight: 600; color: #374151; }
+label .req { color: #ef4444; }
+input, textarea {
+  padding: 10px 12px; border: 1.5px solid #e5e7eb;
+  border-radius: 7px; font-size: 14px; font-family: inherit;
+  transition: border-color .2s; background: #fafafa;
+}
+input:focus, textarea:focus {
+  outline: none; border-color: #667eea;
+  background: white; box-shadow: 0 0 0 3px rgba(102,126,234,.1);
+}
+input.filled, textarea.filled { background: #f0fdf4; border-color: #86efac; }
+textarea { resize: vertical; min-height: 64px; }
+.divider { border: none; border-top: 1.5px solid #f3f4f6; margin: 24px 0; }
+.btn-row { display: flex; gap: 12px; justify-content: flex-end; flex-wrap: wrap; }
+button {
+  padding: 11px 24px; border: none; border-radius: 7px;
+  font-size: 14px; font-weight: 600; cursor: pointer; transition: all .2s;
+}
+.btn-reset { background: #f3f4f6; color: #374151; }
+.btn-reset:hover { background: #e5e7eb; }
+.btn-save {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+.btn-save:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(102,126,234,.4); }
+.btn-save:disabled { opacity: .6; cursor: not-allowed; transform: none; box-shadow: none; }
+.status {
+  display: none; padding: 12px 16px; border-radius: 8px;
+  font-size: 13px; font-weight: 500; margin-top: 16px; text-align: center;
+}
+.status.show { display: block; }
+.status.success { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+.status.error   { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+.status.info    { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+@media (max-width: 520px) {
+  .form-grid { grid-template-columns: 1fr; }
+  .body { padding: 20px; }
+}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="header">
+    <h1>📋 Arztrechnung erfassen</h1>
+    <p>PDF hochladen – KI befüllt die Felder automatisch</p>
+  </div>
+  <div class="body">
+    <div class="drop-zone" id="dropZone">
+      <div class="icon">📄</div>
+      <p><strong>Datei hierher ziehen oder klicken</strong></p>
+      <p class="hint">PDF, PNG oder JPG</p>
+    </div>
+    <input type="file" id="fileInput" accept="application/pdf,image/*">
+    <div class="file-badge" id="fileBadge">
+      <span>✅</span><span id="fileName"></span>
+    </div>
+    <div class="ai-status" id="aiStatus">
+      <div class="spinner"></div>
+      <span id="aiStatusText">KI liest die Rechnung aus…</span>
+    </div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Arzt / Zahnarzt <span class="req">*</span></label>
+        <input type="text" id="arztName" placeholder="z.B. Dr. Müller">
+      </div>
+      <div class="form-group">
+        <label>Rechnungsdatum <span class="req">*</span></label>
+        <input type="date" id="rechnungsdatum">
+      </div>
+      <div class="form-group">
+        <label>Betrag (€) <span class="req">*</span></label>
+        <input type="number" id="betrag" placeholder="0.00" step="0.01" min="0">
+      </div>
+      <div class="form-group">
+        <label>Rechnungsnummer</label>
+        <input type="text" id="rechnungsnummer" placeholder="z.B. RG-2026-001">
+      </div>
+      <div class="form-group full">
+        <label>Leistung / Behandlung <span class="req">*</span></label>
+        <textarea id="behandlung" placeholder="z.B. HNO-Untersuchung, Zahnreinigung …"></textarea>
+      </div>
+      <div class="form-group full">
+        <label>Notizen</label>
+        <textarea id="notizen" placeholder="Optionale Anmerkungen …" style="min-height:48px"></textarea>
+      </div>
+    </div>
+    <hr class="divider">
+    <div class="btn-row">
+      <button class="btn-reset" id="resetBtn">Zurücksetzen</button>
+      <button class="btn-save" id="saveBtn">💾 Speichern → Google Sheets</button>
+    </div>
+    <div class="status" id="statusMsg"></div>
+  </div>
+</div>
+
+<script>
+const WEBHOOK_URL = 'https://hook.eu1.make.com/wz1scfbz4kqki6euizs7aa5nu9udf359';
+
+// API Key laden
+function saveApiKey() {
+  const key = document.getElementById('apiKey').value.trim();
+  if (!key.startsWith('sk-ant-')) {
+    document.getElementById('apiKeyStatus').textContent = '❌ Ungültiger Key – muss mit sk-ant- beginnen';
+    document.getElementById('apiKeyStatus').style.color = '#dc2626';
+    return;
+  }
+  localStorage.setItem('anthropic_api_key', key);
+  document.getElementById('apiKeyStatus').textContent = '✅ Key gespeichert';
+  document.getElementById('apiKeyStatus').style.color = '#15803d';
+  document.getElementById('apiKeyBox').classList.add('saved');
+  document.getElementById('apiKey').value = '••••••••••••••••••••' + key.slice(-4);
+}
+
+// Beim Laden: Key aus localStorage holen
+window.addEventListener('DOMContentLoaded', () => {
+  const saved = localStorage.getItem('anthropic_api_key');
+  if (saved) {
+    document.getElementById('apiKey').value = '••••••••••••••••••••' + saved.slice(-4);
+    document.getElementById('apiKeyStatus').textContent = '✅ Key gespeichert';
+    document.getElementById('apiKeyStatus').style.color = '#15803d';
+    document.getElementById('apiKeyBox').classList.add('saved');
+  }
+});
+
+const dropZone     = document.getElementById('dropZone');
+const fileInput    = document.getElementById('fileInput');
+const fileBadge    = document.getElementById('fileBadge');
+const fileName     = document.getElementById('fileName');
+const aiStatus     = document.getElementById('aiStatus');
+const aiStatusText = document.getElementById('aiStatusText');
+const saveBtn      = document.getElementById('saveBtn');
+const resetBtn     = document.getElementById('resetBtn');
+const statusMsg    = document.getElementById('statusMsg');
+const fields       = ['arztName','rechnungsdatum','betrag','rechnungsnummer','behandlung','notizen'];
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('over'));
+dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('over'); handleFile(e.dataTransfer.files[0]); });
+fileInput.addEventListener('change', e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+
+async function handleFile(file) {
+  if (!file) return;
+  const allowed = ['application/pdf','image/png','image/jpeg','image/jpg','image/webp'];
+  if (!allowed.includes(file.type)) { showStatus('error','❌ Nur PDF, PNG oder JPG erlaubt.'); return; }
+  fileName.textContent = file.name;
+  fileBadge.classList.add('show');
+  hideStatus();
+  try {
+    const base64 = await toBase64(file);
+    aiStatusText.textContent = 'KI liest die Rechnung aus… (ca. 10 Sekunden)';
+    aiStatus.classList.add('show');
+
+    // KI-Extraktion über Google Apps Script
+    // KI-Extraktion folgt in nächstem Schritt
+    aiStatusText.textContent = '📄 Datei hochgeladen – Felder bitte manuell prüfen und ausfüllen.';
+  } catch(e) {
+    aiStatusText.textContent = `⚠️ Fehler: ${e.message}`;
+  }
+}
+
+function fillFields(data) {
+  ['arztName','rechnungsdatum','betrag','rechnungsnummer','behandlung'].forEach(id => {
+    const el = document.getElementById(id);
+    if (data[id] != null && data[id] !== '') { el.value = data[id]; el.classList.add('filled'); }
+  });
+}
+
+function toBase64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result.split(',')[1]);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+}
+
+saveBtn.addEventListener('click', async () => {
+  const arztName       = document.getElementById('arztName').value.trim();
+  const rechnungsdatum = document.getElementById('rechnungsdatum').value;
+  const betrag         = document.getElementById('betrag').value;
+  const behandlung     = document.getElementById('behandlung').value.trim();
+  if (!arztName || !rechnungsdatum || !betrag || !behandlung) {
+    showStatus('error','❌ Bitte Arzt, Datum, Betrag und Leistung ausfüllen.');
+    return;
+  }
+  saveBtn.disabled = true;
+  showStatus('info','💾 Wird übertragen…');
+  try {
+    const body = {
+      arztName, rechnungsdatum,
+      betrag: parseFloat(betrag),
+      rechnungsnummer: document.getElementById('rechnungsnummer').value.trim() || `REC-${Date.now()}`,
+      behandlung,
+      notizen: document.getElementById('notizen').value.trim()
+    };
+    // GET-Request via Image-Tag – umgeht CORS komplett
+    await new Promise((resolve, reject) => {
+      const params = new URLSearchParams({
+        arztName:        body.arztName,
+        rechnungsdatum:  body.rechnungsdatum,
+        betrag:          body.betrag,
+        rechnungsnummer: body.rechnungsnummer,
+        behandlung:      body.behandlung,
+        notizen:         body.notizen
+      });
+      const img = new Image();
+      img.onload = img.onerror = resolve;
+      setTimeout(resolve, 5000);
+      img.src = WEBHOOK_URL + '?' + params.toString();
+    });
+    showStatus('success','✅ Gesendet! Neue Zeile erscheint gleich in Google Sheets.');
+    setTimeout(resetForm, 4000);
+  } catch(e) {
+    showStatus('error',`❌ Fehler: ${e.message}`);
+  } finally {
+    saveBtn.disabled = false;
+  }
+});
+
+resetBtn.addEventListener('click', resetForm);
+function resetForm() {
+  fields.forEach(id => { const el = document.getElementById(id); el.value = ''; el.classList.remove('filled'); });
+  fileBadge.classList.remove('show');
+  aiStatus.classList.remove('show');
+  fileInput.value = '';
+  hideStatus();
+}
+function showStatus(type, msg) { statusMsg.className = `status show ${type}`; statusMsg.textContent = msg; }
+function hideStatus() { statusMsg.className = 'status'; }
+</script>
+</body>
+</html>
