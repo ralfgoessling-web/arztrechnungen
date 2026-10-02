@@ -110,6 +110,15 @@ button {
     <p>PDF hochladen – KI befüllt die Felder automatisch</p>
   </div>
   <div class="body">
+    <div id="apiKeyBox" style="background:#fafafa;border:1.5px solid #e5e7eb;border-radius:10px;padding:16px;margin-bottom:20px;">
+      <label style="font-size:13px;font-weight:600;color:#374151;display:block;margin-bottom:6px;">🔑 Anthropic API-Key <span style="font-weight:400;color:#9ca3af;font-size:12px;">– wird nur lokal gespeichert</span></label>
+      <div style="display:flex;gap:8px;">
+        <input type="password" id="apiKey" placeholder="sk-ant-..." style="flex:1;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:7px;font-size:13px;font-family:monospace;">
+        <button onclick="saveApiKey()" style="padding:10px 16px;background:#667eea;color:white;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;">Speichern</button>
+      </div>
+      <p id="apiKeyStatus" style="font-size:12px;margin-top:6px;color:#9ca3af;"></p>
+    </div>
+
     <div class="drop-zone" id="dropZone">
       <div class="icon">📄</div>
       <p><strong>Datei hierher ziehen oder klicken</strong></p>
@@ -187,6 +196,29 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 });
 
+function saveApiKey() {
+  const key = document.getElementById('apiKey').value.trim();
+  if (!key.startsWith('sk-ant-')) {
+    document.getElementById('apiKeyStatus').textContent = '❌ Ungültig – muss mit sk-ant- beginnen';
+    document.getElementById('apiKeyStatus').style.color = '#dc2626';
+    return;
+  }
+  localStorage.setItem('anthropic_api_key', key);
+  document.getElementById('apiKeyStatus').textContent = '✅ Gespeichert';
+  document.getElementById('apiKeyStatus').style.color = '#15803d';
+  document.getElementById('apiKeyBox').style.borderColor = '#86efac';
+  document.getElementById('apiKey').value = '••••••••••••' + key.slice(-4);
+}
+window.addEventListener('DOMContentLoaded', () => {
+  const saved = localStorage.getItem('anthropic_api_key');
+  if (saved) {
+    document.getElementById('apiKey').value = '••••••••••••' + saved.slice(-4);
+    document.getElementById('apiKeyStatus').textContent = '✅ Gespeichert';
+    document.getElementById('apiKeyStatus').style.color = '#15803d';
+    document.getElementById('apiKeyBox').style.borderColor = '#86efac';
+  }
+});
+
 const dropZone     = document.getElementById('dropZone');
 const fileInput    = document.getElementById('fileInput');
 const fileBadge    = document.getElementById('fileBadge');
@@ -217,8 +249,41 @@ async function handleFile(file) {
     aiStatus.classList.add('show');
 
     // KI-Extraktion über Google Apps Script
-    // KI-Extraktion folgt in nächstem Schritt
-    aiStatusText.textContent = '📄 Datei hochgeladen – Felder bitte manuell prüfen und ausfüllen.';
+    const apiKey = localStorage.getItem('anthropic_api_key');
+    if (!apiKey) {
+      aiStatusText.textContent = '⚠️ Kein API-Key hinterlegt – Felder bitte manuell ausfüllen.';
+      return;
+    }
+
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 800,
+        messages: [{ role: 'user', content: [
+          file.type === 'application/pdf'
+            ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } }
+            : { type: 'image',    source: { type: 'base64', media_type: file.type, data: base64 } },
+          { type: 'text', text: 'Extrahiere aus dieser Arztrechnung folgende Felder als reines JSON (kein Markdown, nur JSON):\n{"arztName":"","rechnungsdatum":"YYYY-MM-DD","betrag":0,"rechnungsnummer":"","behandlung":""}' }
+        ]}]
+      })
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      const text = data.content?.find(c => c.type === 'text')?.text || '';
+      const parsed = JSON.parse(text.replace(/```json|```/g,'').trim());
+      fillFields(parsed);
+      aiStatusText.textContent = '✅ KI hat die Felder befüllt – bitte prüfen!';
+    } else {
+      const err = await res.json();
+      aiStatusText.textContent = `⚠️ API-Fehler: ${err.error?.message || res.status} – bitte manuell ausfüllen.`;
+    }
   } catch(e) {
     aiStatusText.textContent = `⚠️ Fehler: ${e.message}`;
   }
